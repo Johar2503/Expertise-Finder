@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Expertise Finder</title>
+<script src="/vendor/vis-network.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1120;
+    --bg-grid: rgba(255,255,255,0.035);
+    --panel: #131c31;
+    --panel-border: #22304d;
+    --panel-border-hover: #34446b;
+    --text: #e6ebf5;
+    --text-dim: #8b96ad;
+    --accent: #6366f1;
+    --accent-2: #22d3ee;
+    --accent-grad: linear-gradient(135deg, #6366f1, #8b5cf6 55%, #22d3ee);
+    --green: #34d399;
+    --amber: #f59e0b;
+    --red: #f87171;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    max-width: 920px;
+    margin: 48px auto 80px;
+    padding: 0 20px;
+    color: var(--text);
+    line-height: 1.55;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(99,102,241,0.18), transparent 40%),
+      radial-gradient(circle at 85% 15%, rgba(34,211,238,0.12), transparent 45%),
+      var(--bg);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  @media (max-width: 600px) {
+    body { margin: 20px auto 60px; }
+    h1 { font-size: 1.5rem; }
+    .step-card { padding: 16px; }
+    .chip { font-size: 0.72rem; padding: 5px 10px; }
+  }
+
+  header.hero { margin-bottom: 28px; }
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 6px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: var(--accent-grad);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline-block;
+  }
+  .tagline { color: var(--text-dim); margin: 0 0 18px; font-size: 0.98rem; max-width: 640px; }
+
+  #authStatus {
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 999px;
+    display: inline-block;
+    margin-bottom: 24px;
+    letter-spacing: 0.2px;
+  }
+  .status-out { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+  .status-in { background: rgba(52,211,153,0.12); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
+
+  .step-card {
+    margin-bottom: 22px;
+    padding: 22px;
+    background: linear-gradient(180deg, var(--panel), rgba(19,28,49,0.6));
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 30px -15px rgba(0,0,0,0.6);
+    transition: border-color 0.2s;
+  }
+  .step-card:hover { border-color: var(--panel-border-hover); }
+
+  .step-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--accent-grad);
+    color: white;
+    font-size: 0.82rem;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .hint { color: var(--text-dim); font-size: 0.85rem; margin: 4px 0 14px; }
+
+  input, textarea {
+    width: 100%;
+    padding: 11px 14px;
+    margin: 6px 0;
+    background: #0e1526;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input::placeholder, textarea::placeholder { color: #5b6a8a; }
+  input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+  input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  button {
+    padding: 11px 18px;
+    cursor: pointer;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent-grad);
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-top: 4px;
+    margin-right: 8px;
+    transition: transform 0.12s, filter 0.12s, opacity 0.12s;
+  }
+  button:hover { filter: brightness(1.12); }
+  button:active { transform: scale(0.98); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; filter: none; transform: none; }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--panel-border-hover);
+  }
+  button.secondary:hover { background: rgba(255,255,255,0.05); filter: none; }
+
+  #signOutBtn {
+    background: #1a2438;
+    border: 1px solid var(--panel-border-hover);
+    color: var(--text-dim);
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    box-shadow: 0 4px 16px -6px rgba(0,0,0,0.7);
+  }
+  #signOutBtn:hover { color: var(--red); border-color: rgba(248,113,113,0.4); }
+
+  .chip {
+    display: inline-block;
+    padding: 6px 13px;
+    margin: 3px 4px 3px 0;
+    border-radius: 999px;
+    background: rgba(99,102,241,0.1);
+    color: #a5b4fc;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid rgba(99,102,241,0.3);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .chip:hover { background: rgba(99,102,241,0.22); border-color: rgba(99,102,241,0.5); }
+
+  .pro-badge {
+    background: linear-gradient(135deg, #f59e0b, #fbbf24);
+    color: #1c1300;
+    padding: 2px 9px;
+    border-radius: 5px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+  }
+  .unverified-badge { color: var(--amber); font-size: 0.78rem; }
+  .confirm-btn {
+    padding: 2px 10px;
+    font-size: 0.7rem;
+    margin-left: 4px;
+    background: var(--amber);
+    color: #241900;
+    border-radius: 999px;
+  }
+  .confirm-btn:hover { filter: brightness(1.1); }
+
+  .empty { color: var(--text-dim); font-style: italic; }
+
+  .chat-log {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 14px 0;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .chat-log::-webkit-scrollbar { width: 6px; }
+  .chat-log::-webkit-scrollbar-thumb { background: var(--panel-border-hover); border-radius: 4px; }
+
+  .bubble { padding: 12px 16px; border-radius: 14px; max-width: 88%; font-size: 0.92rem; }
+  .bubble.user {
+    align-self: flex-end;
+    background: var(--accent-grad);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.agent {
+    align-self: flex-start;
+    background: #0e1526;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .bubble.agent .reasoning { color: var(--text-dim); font-size: 0.8rem; margin-top: 8px; font-style: italic; }
+  .result-list { margin-top: 6px; }
+  .person { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .person:last-child { border-bottom: none; }
+
+  #graphCanvas {
+    width: 100%;
+    height: 320px;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    margin-top: 14px;
+    background: #f8fafc;
+  }
+  .legend { font-size: 0.78rem; color: var(--text-dim); margin-top: 8px; }
+  .legend span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+  <button id="signOutBtn" onclick="signOut()" style="display:none; position:fixed; top:16px; right:16px; z-index:10;">↩ Sign out</button>
+
+  <header class="hero">
+    <h1>🔎 Expertise Finder</h1>
+    <p class="tagline">Ask the agent who knows something — it traverses your org's knowledge graph and shows you exactly how it got the answer.</p>
+    <div id="authStatus" class="status-out">Step 1: sign in below to get started</div>
+  </header>
+
+  <section class="step-card">
+    <p class="step-title"><span class="step-num">1</span> Sign in</p>
+    <p class="hint" id="signInHint">Enter any name or email to continue (this is a demo login).</p>
+    <input id="authToken" placeholder="e.g. your name" />
+    <button id="signInBtn" onclick="signIn()">Sign in</button>
+  </section>
+
+  <section class="step-card">
+    <p class="step-title"><span class="step-num">2</span> Ask the agent</p>
+    <p class="hint">Try one of these, or type your own:</p>
+    <div>
+      <span class="chip" onclick="quickSearch('Kubernetes')">Who knows Kubernetes?</span>
+      <span class="chip" onclick="quickSearch('Rust')">Who knows Rust?</span>
+      <span class="chip" onclick="quickSearch('React')">Who knows React?</span>
+      <span class="chip" onclick="quickSearch('Postgres')">Who knows Postgres?</span>
+      <span class="chip" onclick="quickSearch('Threat Modeling')">Who knows Threat Modeling?</span>
+      <span class="chip" onclick="quickSearch('Kubernetes, Terraform')">Kubernetes + Terraform</span>
+    </div>
+    <div id="chatLog" class="chat-log"></div>
+    <input id="skillQuery" placeholder="Ask: who knows...? (comma-separate multiple, e.g. Kubernetes, Terraform)" onkeydown="if(event.key==='Enter') search()" />
+    <button id="askBtn" onclick="search()">Ask</button>
+    <button id="upgradeBtn" class="secondary" onclick="upgrade()">⭐ Unlock introduction paths (Pro)</button>
+
+    <div id="graphCanvas"></div>
+    <div class="legend">
+      <span class="dot" style="background:#2563eb"></span> skill
+      <span class="dot" style="background:#16a34a"></span> knows it directly
+      <span class="dot" style="background:#ea580c"></span> can introduce you (Pro)
+    </div>
+  </section>
+
+  <section class="step-card">
+    <p class="step-title"><span class="step-num">3</span> Teach it something new</p>
+    <p class="hint">Paste a sentence from a Slack message, doc, or ticket — the agent extracts who-knows-what and adds it to the graph.</p>
+    <textarea id="docText" rows="3" placeholder="e.g. Elena just finished a deep dive into zero-trust architecture for the payments service."></textarea>
+    <button id="teachBtn" onclick="ingest()">Teach it</button>
+    <div id="ingestResult"></div>
+  </section>
+
+<script>
+let token = null;
+let network = null;
+let pendingConfirms = [];
+
+document.getElementById('chatLog').addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('confirm-btn')) return;
+  const idx = Number(e.target.dataset.confirmIdx);
+  const { person, skill } = pendingConfirms[idx];
+  e.target.disabled = true;
+  e.target.textContent = '...';
+  const res = await fetch('/api/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+    body: JSON.stringify({ person, skill }),
+  });
+  const data = await res.json();
+  if (data.confirmed) {
+    e.target.parentElement.outerHTML = ' <span style="color:#34d399;font-size:0.8rem">✅ confirmed</span>';
+  } else {
+    e.target.textContent = 'confirm';
+    e.target.disabled = false;
+    alert(data.error || 'Could not confirm.');
+  }
+});
+
+function signIn() {
+  if (token) return; // already signed in — must sign out first before someone else can sign in
+  const typed = document.getElementById('authToken').value;
+  if (!typed) return;
+  token = typed;
+  const el = document.getElementById('authStatus');
+  el.innerText = `Signed in as ${token}`;
+  el.className = 'status-in';
+  document.getElementById('signOutBtn').style.display = 'inline-block';
+  document.getElementById('authToken').disabled = true;
+  document.getElementById('signInBtn').disabled = true;
+  document.getElementById('signInHint').innerText = 'Signed in — use "Sign out" (top right) before someone else signs in.';
+}
+
+function signOut() {
+  // Full session reset — nothing from the previous identity should carry
+  // over (chat history, graph, Pro status, pending confirmations, inputs),
+  // and the sign-in form re-opens so a different person can sign in.
+  token = null;
+  devPro = false;
+  pendingConfirms = [];
+  if (network) { network.destroy(); network = null; }
+
+  document.getElementById('authToken').value = '';
+  document.getElementById('authToken').disabled = false;
+  document.getElementById('signInBtn').disabled = false;
+  document.getElementById('signInHint').innerText = 'Enter any name or email to continue (this is a demo login).';
+  document.getElementById('authStatus').innerText = 'Step 1: sign in above to get started';
+  document.getElementById('authStatus').className = 'status-out';
+  document.getElementById('signOutBtn').style.display = 'none';
+
+  document.getElementById('chatLog').innerHTML = '';
+  document.getElementById('skillQuery').value = '';
+  document.getElementById('graphCanvas').innerHTML = '';
+  document.getElementById('docText').value = '';
+  document.getElementById('ingestResult').innerHTML = '';
+
+  const upgradeBtn = document.getElementById('upgradeBtn');
+  upgradeBtn.disabled = false;
+  upgradeBtn.textContent = '⭐ Unlock introduction paths (Pro)';
+}
+
+function quickSearch(skill) {
+  document.getElementById('skillQuery').value = skill;
+  search();
+}
+
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+function namesMatch(a, b) {
+  const la = (a || '').toLowerCase();
+  const lb = (b || '').toLowerCase();
+  return la === lb || la.startsWith(lb + ' ') || lb.startsWith(la + ' ');
+}
+
+function addBubble(role, html) {
+  const log = document.getElementById('chatLog');
+  const div = document.createElement('div');
+  div.className = `bubble ${role}`;
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderGraph(graph) {
+  const colors = { skill: '#2563eb', person: '#16a34a', connector: '#ea580c' };
+  const nodes = new vis.DataSet(graph.nodes.map(n => ({
+    id: n.id, label: n.label, color: colors[n.group] || '#94a3b8', font: { color: '#000' }
+  })));
+  const edges = new vis.DataSet(graph.edges.map((e, i) => ({ id: i, ...e })));
+  const container = document.getElementById('graphCanvas');
+  const data = { nodes, edges };
+  const options = {
+    physics: { stabilization: { fit: true, iterations: 150 } },
+    interaction: { zoomView: false, dragView: false, dragNodes: true, hover: true },
+    edges: { arrows: 'to', font: { size: 11, color: '#666' }, color: '#cbd5e1' },
+    nodes: { shape: 'dot', size: 16 },
+  };
+  if (network) network.destroy();
+  network = new vis.Network(container, data, options);
+  // Settle the layout once, then freeze physics so nodes stop drifting —
+  // dragging individual nodes still works via interaction.dragNodes.
+  network.once('stabilizationIterationsDone', () => {
+    network.setOptions({ physics: false });
+    network.fit({ animation: false });
+  });
+}
+
+async function search() {
+  const skill = document.getElementById('skillQuery').value;
+  if (!token) { addBubble('agent', 'Sign in first (Step 1).'); return; }
+  if (!skill) return;
+  addBubble('user', `Who knows ${esc(skill)}?`);
+  document.getElementById('skillQuery').value = '';
+
+  const btn = document.getElementById('askBtn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+  try {
+    const res = await fetch('/api/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-auth-token': token,
+        ...(devPro ? { 'x-dev-pro': 'true' } : {}),
+      },
+      body: JSON.stringify({ skill }),
+    });
+    const data = await res.json();
+    if (data.error) { addBubble('agent', esc(data.error)); return; }
+
+    let html = data.direct.length
+      ? '<div class="result-list">' + data.direct.map(p => {
+          const skillList = p.matches.map(m => {
+            if (m.verified) return `${esc(m.skill)} (${esc(m.level)})`;
+            const idx = pendingConfirms.push({ person: p.name, skill: m.skill }) - 1;
+            const isSelf = namesMatch(token, p.name);
+            const action = isSelf
+              ? `<button class="confirm-btn" data-confirm-idx="${idx}">confirm</button>`
+              : `<span style="color:#f59e0b">(only ${esc(p.name)} can confirm this)</span>`;
+            return `${esc(m.skill)} (${esc(m.level)}) <span class="unverified-badge" title="Learned from Step 3, not yet confirmed">🔶 unverified ${action}</span>`;
+          }).join(', ');
+          const countBadge = p.matchCount > 1 ? ` — matches ${p.matchCount} skills` : '';
+          return `<div class="person">👤 <b>${esc(p.name)}</b> — ${esc(p.title || '')} (${esc(p.team || 'no team')})${countBadge}<br><span style="color:#8b96ad;font-size:0.85rem">${skillList}</span></div>`;
+        }).join('') + '</div>'
+      : `No one in the graph knows "${esc(skill)}" yet — try teaching it something in Step 3.`;
+
+    if (data.isPro && data.connectors?.length) {
+      html += '<div class="result-list"><span class="pro-badge">PRO</span> Introduction paths:</div>';
+      html += data.connectors.map(c => `<div class="person">🔗 ${esc(c.introducer)} → knows → <b>${esc(c.expert)}</b></div>`).join('');
+    }
+    html += `<div class="reasoning">${esc(data.explanation)}</div>`;
+    addBubble('agent', html);
+
+    if (data.graph) renderGraph(data.graph);
+  } catch (e) {
+    addBubble('agent', 'Something went wrong reaching the server — try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+}
+
+async function ingest() {
+  const text = document.getElementById('docText').value;
+  const el = document.getElementById('ingestResult');
+  if (!token) { el.innerHTML = '<p class="empty">Sign in first (Step 1).</p>'; return; }
+  if (!text) { el.innerHTML = '<p class="empty">Paste a sentence first.</p>'; return; }
+
+  const btn = document.getElementById('teachBtn');
+  btn.disabled = true;
+  btn.textContent = 'Reading...';
+  el.innerHTML = '<p class="empty">Reading it...</p>';
+  try {
+    const res = await fetch('/api/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.error) { el.innerHTML = `<p style="color:#f87171">${esc(data.error)}</p>`; return; }
+    el.innerHTML = data.extracted > 0
+      ? `<p>✅ Learned ${data.extracted} new thing(s): ${data.extractions.map(e => `<b>${esc(e.person)}</b> knows <b>${esc(e.skill)}</b>`).join(', ')}</p>`
+      : '<p class="empty">Didn\'t find a clear person/skill mention in that text — try a more specific sentence.</p>';
+  } catch (e) {
+    el.innerHTML = '<p style="color:#f87171">Something went wrong reaching the server — try again.</p>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Teach it';
+  }
+}
+
+let devPro = false;
+
+async function upgrade() {
+  if (!token) { alert('Sign in first.'); return; }
+  const res = await fetch('/api/upgrade', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+  });
+  const data = await res.json();
+  if (data.checkoutUrl) {
+    window.location.href = data.checkoutUrl;
+  } else if (data.note) {
+    // Dev mode: no real Butterbase checkout yet, so simulate the unlock
+    // locally to demo the Pro feature end-to-end through the actual UI.
+    devPro = true;
+    const btn = document.getElementById('upgradeBtn');
+    btn.textContent = '✅ Pro unlocked (dev mode) — search again to see introduction paths';
+    btn.disabled = true;
+  } else {
+    alert('Upgrade not available yet.');
+  }
+}
+</script>
+</body>
+</html>

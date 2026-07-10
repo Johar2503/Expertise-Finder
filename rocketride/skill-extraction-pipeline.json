@@ -1,0 +1,40 @@
+{
+  "name": "skill-extraction-pipeline",
+  "description": "Takes a raw text snippet (Slack message, doc, ticket) and extracts {person, skill, confidence} triples for the Expertise Finder knowledge graph.",
+  "nodes": [
+    {
+      "id": "input",
+      "type": "input",
+      "config": { "field": "input", "schema": { "input": "string" } }
+    },
+    {
+      "id": "extract_llm",
+      "type": "llm",
+      "config": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5",
+        "system_prompt": "You extract who-knows-what signals from workplace text. Given a snippet, return a JSON array of objects {person, skill, confidence} where confidence is 0-1. Only include people and skills explicitly named or clearly implied. Respond with JSON only, no prose.",
+        "user_prompt_template": "Text:\n{{input}}\n\nExtract person/skill mentions as JSON array.",
+        "output_field": "raw_extraction"
+      }
+    },
+    {
+      "id": "parse_json",
+      "type": "transform",
+      "config": {
+        "language": "javascript",
+        "code": "const parsed = JSON.parse(inputs.raw_extraction); return { extractions: parsed };"
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "config": { "field": "extractions" }
+    }
+  ],
+  "edges": [
+    { "from": "input", "to": "extract_llm" },
+    { "from": "extract_llm", "to": "parse_json" },
+    { "from": "parse_json", "to": "output" }
+  ]
+}
