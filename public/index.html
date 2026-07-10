@@ -519,9 +519,13 @@ async function ingest() {
     });
     const data = await res.json();
     if (data.error) { el.innerHTML = `<p style="color:#f87171">${esc(data.error)}</p>`; return; }
-    el.innerHTML = data.extracted > 0
+    const pipelineNote = data.rocketride?.called
+      ? '<p style="color:#8b96ad;font-size:0.8rem">🚀 Processed through the RocketRide Cloud pipeline (webhook → Anthropic → Return Answers), running live on api.rocketride.ai.</p>'
+      : '<p style="color:#f59e0b;font-size:0.8rem">⚠️ RocketRide Cloud pipeline call did not go through this time — extraction still ran via the local fallback.</p>';
+    el.innerHTML = (data.extracted > 0
       ? `<p>✅ Learned ${data.extracted} new thing(s): ${data.extractions.map(e => `<b>${esc(e.person)}</b> knows <b>${esc(e.skill)}</b>`).join(', ')}</p>`
-      : '<p class="empty">Didn\'t find a clear person/skill mention in that text — try a more specific sentence.</p>';
+      : '<p class="empty">Didn\'t find a clear person/skill mention in that text — try a more specific sentence.</p>'
+    ) + pipelineNote;
   } catch (e) {
     el.innerHTML = '<p style="color:#f87171">Something went wrong reaching the server — try again.</p>';
   } finally {
