@@ -43,10 +43,41 @@ async function extractSkillsFromText(text) {
 
 let cachedTaskToken = process.env.ROCKETRIDE_TASK_TOKEN || null;
 
+// The real pipeline file (with the live Anthropic key embedded, since
+// RocketRide requires it inline) is gitignored for security and only exists
+// on machines that built it in the visual editor. In deployed environments
+// (Railway, etc.) it isn't present, so self-healing falls back to building
+// the same config from environment variables instead of reading the file.
+function loadPipelineConfig() {
+  const localPath = path.join(__dirname, '..', 'rocketride', 'skill-extraction.pipe');
+  if (fs.existsSync(localPath)) {
+    return JSON.parse(fs.readFileSync(localPath, 'utf8'));
+  }
+  return {
+    components: [
+      { id: 'webhook_1', provider: 'webhook', name: 'Webhook', config: { hideForm: true, mode: 'Source', parameters: {}, type: 'webhook' }, ui: { position: { x: 10, y: 80 }, nodeType: 'default', formDataValid: true } },
+      {
+        id: 'llm_anthropic_1', provider: 'llm_anthropic', name: 'Anthropic',
+        config: { profile: 'claude-sonnet-4-6', 'claude-sonnet-4-6': { apikey: process.env.ANTHROPIC_API_KEY }, name: 'Anthropic', parameters: { google: {} } },
+        ui: { position: { x: 270, y: -50 }, nodeType: 'default', formDataValid: true },
+        input: [{ lane: 'questions', from: 'webhook_1' }],
+      },
+      {
+        id: 'response_answers_2', provider: 'response_answers', name: 'Return Answers',
+        config: { laneName: 'answers', name: 'Return Answers' },
+        ui: { position: { x: 480, y: 70 }, nodeType: 'default', formDataValid: true },
+        input: [{ lane: 'answers', from: 'llm_anthropic_1' }],
+      },
+    ],
+    project_id: process.env.ROCKETRIDE_PROJECT_ID || '6b15b52d-b63b-4bf6-a4e2-a08c3a3c495f',
+    version: 1,
+    snapToGrid: true,
+    snapGridSize: [10, 10],
+  };
+}
+
 async function createRocketRideTask() {
-  const pipelineConfig = JSON.parse(
-    fs.readFileSync(path.join(__dirname, '..', 'rocketride', 'skill-extraction.pipe'), 'utf8')
-  );
+  const pipelineConfig = loadPipelineConfig();
   const res = await fetch(`${process.env.ROCKETRIDE_URI}/task`, {
     method: 'POST',
     headers: {
