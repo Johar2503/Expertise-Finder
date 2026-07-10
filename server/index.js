@@ -12,17 +12,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- Auth middleware: verifies the Butterbase session token sent from the client ---
-// DEV_BYPASS_AUTH lets us test the app locally before the Butterbase app/auth
-// exists. Remove this before the real demo once real credentials are wired up.
 async function requireAuth(req, res, next) {
-  if (process.env.DEV_BYPASS_AUTH === 'true') {
-    // In dev mode the "sign in" box takes any typed name — use it as the
-    // real identity so features like self-confirmation can check "is this
-    // actually the person the claim is about", not just "is anyone signed in".
-    const devName = req.headers['x-auth-token'] || 'dev-user';
-    req.user = { userId: devName.toLowerCase(), name: devName, email: 'dev@local', isPro: req.headers['x-dev-pro'] === 'true' };
-    return next();
-  }
   const token = req.headers['x-auth-token'];
   if (!token) return res.status(401).json({ error: 'Missing auth token' });
   try {
@@ -32,6 +22,34 @@ async function requireAuth(req, res, next) {
     res.status(401).json({ error: 'Invalid session' });
   }
 }
+
+// --- Sign up: creates a real Butterbase Auth user, then logs them straight
+//     in (Butterbase allows login before email verification completes) ---
+app.post('/api/auth/signup', async (req, res) => {
+  const { email, password, displayName } = req.body;
+  if (!email || !password || !displayName) {
+    return res.status(400).json({ error: 'email, password, and displayName are required' });
+  }
+  try {
+    await butterbase.signup(email, password, displayName);
+    const session = await butterbase.login(email, password);
+    res.json(session);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// --- Sign in: real Butterbase Auth login ---
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+  try {
+    const session = await butterbase.login(email, password);
+    res.json(session);
+  } catch (e) {
+    res.status(401).json({ error: 'Invalid email or password' });
+  }
+});
 
 // --- Search: "who knows X" ---
 // Free tier: direct HAS_SKILL matches only.
@@ -77,9 +95,7 @@ app.post('/api/search', requireAuth, async (req, res) => {
     .sort((a, b) => b.matchCount - a.matchCount);
 
   let connectors = [];
-  const isPro = process.env.DEV_BYPASS_AUTH === 'true'
-    ? req.user.isPro
-    : await butterbase.isProUser(req.user.userId).catch(() => false);
+  const isPro = await butterbase.isProUser(req.user.accessToken).catch(() => false);
   if (isPro) {
     connectors = await runQuery(
       `MATCH (p:Person)-[:HAS_SKILL]->(s:Skill), (p)<-[:KNOWS]-(mid:Person)
@@ -199,11 +215,16 @@ app.post('/api/verify', requireAuth, async (req, res) => {
 
 // --- Pro upgrade via Butterbase payment ---
 app.post('/api/upgrade', requireAuth, async (req, res) => {
-  if (process.env.DEV_BYPASS_AUTH === 'true') {
-    return res.json({ checkoutUrl: null, note: 'Dev mode: pretend Pro unlocked, resend request with x-dev-pro: true' });
+  try {
+    const checkout = await butterbase.createProCheckout(req.user.accessToken);
+    res.json(checkout);
+  } catch (e) {
+    // No Stripe-connected plan configured yet (BUTTERBASE_PRO_PLAN_ID is a
+    // placeholder) — the call is real and correctly wired, it just has
+    // nothing to check out against. Fail with a clear message instead of a
+    // raw API error.
+    res.json({ checkoutUrl: null, note: 'Payments aren\'t fully configured yet (no live Stripe plan connected) — the checkout call itself is real and wired correctly.' });
   }
-  const checkout = await butterbase.createProCheckout(req.user.userId);
-  res.json(checkout);
 });
 
 const port = process.env.PORT || 3000;

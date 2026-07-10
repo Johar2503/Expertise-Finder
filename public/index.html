@@ -247,9 +247,12 @@
 
   <section class="step-card">
     <p class="step-title"><span class="step-num">1</span> Sign in</p>
-    <p class="hint" id="signInHint">Enter any name or email to continue (this is a demo login).</p>
-    <input id="authToken" placeholder="e.g. your name" />
-    <button id="signInBtn" onclick="signIn()">Sign in</button>
+    <p class="hint" id="signInHint">New here? Add your name and click Sign up. Already have an account? Just email + password, then Sign in.</p>
+    <input id="authName" placeholder="Your name (needed for Sign up only)" />
+    <input id="authEmail" type="email" placeholder="you@example.com" />
+    <input id="authPassword" type="password" placeholder="Password (8+ chars, upper, lower, number, symbol)" />
+    <button id="signUpBtn" onclick="signUp()">Sign up</button>
+    <button id="signInBtn" class="secondary" onclick="signInReal()">Sign in</button>
   </section>
 
   <section class="step-card">
@@ -310,18 +313,58 @@ document.getElementById('chatLog').addEventListener('click', async (e) => {
   }
 });
 
-function signIn() {
-  if (token) return; // already signed in — must sign out first before someone else can sign in
-  const typed = document.getElementById('authToken').value;
-  if (!typed) return;
-  token = typed;
+let currentUserName = null;
+
+function applySignedInState(data) {
+  token = data.access_token;
+  currentUserName = data.user.display_name;
   const el = document.getElementById('authStatus');
-  el.innerText = `Signed in as ${token}`;
+  el.innerText = `Signed in as ${currentUserName} (${data.user.email})`;
   el.className = 'status-in';
   document.getElementById('signOutBtn').style.display = 'inline-block';
-  document.getElementById('authToken').disabled = true;
+  document.getElementById('authName').disabled = true;
+  document.getElementById('authEmail').disabled = true;
+  document.getElementById('authPassword').disabled = true;
+  document.getElementById('signUpBtn').disabled = true;
   document.getElementById('signInBtn').disabled = true;
   document.getElementById('signInHint').innerText = 'Signed in — use "Sign out" (top right) before someone else signs in.';
+}
+
+async function signUp() {
+  if (token) return;
+  const displayName = document.getElementById('authName').value;
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+  if (!displayName || !email || !password) {
+    alert('Name, email, and password are all required to sign up.');
+    return;
+  }
+  const res = await fetch('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName }),
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  applySignedInState(data);
+}
+
+async function signInReal() {
+  if (token) return;
+  const email = document.getElementById('authEmail').value;
+  const password = document.getElementById('authPassword').value;
+  if (!email || !password) {
+    alert('Email and password are required to sign in.');
+    return;
+  }
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  applySignedInState(data);
 }
 
 function signOut() {
@@ -329,14 +372,19 @@ function signOut() {
   // over (chat history, graph, Pro status, pending confirmations, inputs),
   // and the sign-in form re-opens so a different person can sign in.
   token = null;
-  devPro = false;
+  currentUserName = null;
   pendingConfirms = [];
   if (network) { network.destroy(); network = null; }
 
-  document.getElementById('authToken').value = '';
-  document.getElementById('authToken').disabled = false;
+  document.getElementById('authName').value = '';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authName').disabled = false;
+  document.getElementById('authEmail').disabled = false;
+  document.getElementById('authPassword').disabled = false;
+  document.getElementById('signUpBtn').disabled = false;
   document.getElementById('signInBtn').disabled = false;
-  document.getElementById('signInHint').innerText = 'Enter any name or email to continue (this is a demo login).';
+  document.getElementById('signInHint').innerText = 'New here? Add your name and click Sign up. Already have an account? Just email + password, then Sign in.';
   document.getElementById('authStatus').innerText = 'Step 1: sign in above to get started';
   document.getElementById('authStatus').className = 'status-out';
   document.getElementById('signOutBtn').style.display = 'none';
@@ -415,11 +463,7 @@ async function search() {
   try {
     const res = await fetch('/api/search', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': token,
-        ...(devPro ? { 'x-dev-pro': 'true' } : {}),
-      },
+      headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
       body: JSON.stringify({ skill }),
     });
     const data = await res.json();
@@ -430,7 +474,7 @@ async function search() {
           const skillList = p.matches.map(m => {
             if (m.verified) return `${esc(m.skill)} (${esc(m.level)})`;
             const idx = pendingConfirms.push({ person: p.name, skill: m.skill }) - 1;
-            const isSelf = namesMatch(token, p.name);
+            const isSelf = namesMatch(currentUserName, p.name);
             const action = isSelf
               ? `<button class="confirm-btn" data-confirm-idx="${idx}">confirm</button>`
               : `<span style="color:#f59e0b">(only ${esc(p.name)} can confirm this)</span>`;
@@ -486,8 +530,6 @@ async function ingest() {
   }
 }
 
-let devPro = false;
-
 async function upgrade() {
   if (!token) { alert('Sign in first.'); return; }
   const res = await fetch('/api/upgrade', {
@@ -496,16 +538,10 @@ async function upgrade() {
   });
   const data = await res.json();
   if (data.checkoutUrl) {
+    // Real Butterbase/Stripe checkout — send the user there to actually pay.
     window.location.href = data.checkoutUrl;
-  } else if (data.note) {
-    // Dev mode: no real Butterbase checkout yet, so simulate the unlock
-    // locally to demo the Pro feature end-to-end through the actual UI.
-    devPro = true;
-    const btn = document.getElementById('upgradeBtn');
-    btn.textContent = '✅ Pro unlocked (dev mode) — search again to see introduction paths';
-    btn.disabled = true;
   } else {
-    alert('Upgrade not available yet.');
+    alert(data.note || data.error || 'Upgrade not available yet.');
   }
 }
 </script>

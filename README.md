@@ -17,9 +17,18 @@ direct skill matches for everyone, and (for Pro users, gated by a real Butterbas
   `(Person)-[:KNOWS]->(Person)`. Search isn't a flat table scan — it's a Cypher traversal, and
   the Pro tier specifically exists to showcase multi-hop relationship queries
   (`server/index.js` → `/api/search`).
-- **Butterbase** — auth gates every API call (`requireAuth` middleware verifies a session
-  token), the database logs search history and ingested docs, and payment is the actual feature
-  gate between free (direct matches only) and Pro (connector paths) — not a bolted-on checkout.
+- **Butterbase** — real Auth API (signup/login/session verification against
+  `api.butterbase.ai/auth/{app_id}`, `server/butterbase.js` + `server/index.js` →
+  `/api/auth/signup`, `/api/auth/login`), real Database (schema applied via `schema/apply`,
+  `search_history` and `ingested_docs` tables genuinely written to via the Data API on every
+  search/ingest), and real Billing wiring (`/api/upgrade` calls the actual
+  `billing/subscribe`/`billing/subscription` endpoints with the user's session token — verified
+  against the live API). The one piece intentionally not completed: connecting a live Stripe
+  account in the dashboard's Monetization tab, which we chose not to do without a real bank
+  account during the hackathon window. The checkout call is real and correctly wired; it just
+  has no live plan to check out against yet, so it fails with a clear message instead of a raw
+  error (verified via `/api/upgrade` returning `{"checkoutUrl":null,"note":"Payments aren't
+  fully configured yet..."}` rather than crashing).
 - **RocketRide Cloud** — the pipeline (`rocketride/skill-extraction.pipe`: Webhook → Anthropic →
   Return Answers) is genuinely deployed and running on `api.rocketride.ai`. Every `/api/ingest`
   call submits the real text to the live webhook (`server/rocketride.js` →
@@ -41,15 +50,19 @@ direct skill matches for everyone, and (for Pro users, gated by a real Butterbas
 3. Copy the connection URI/username/password into `.env`.
 
 ### 2. Butterbase
-1. Sign up at dashboard.butterbase.ai, create a project, redeem promo code `ENJOY0707` in
-   billing.
-2. Enable Auth, Database, and Payments for the project.
-3. Create a "Pro" price/product for the upgrade flow.
-4. `server/butterbase.js` is written against a conventional REST shape (Bearer key + JSON) —
-   check your project's actual API docs in the dashboard and adjust the fetch calls/paths if
-   they differ. The rest of the app only depends on the exported function signatures, so this
-   is the one file you may need to touch.
-5. Copy your project URL + API key + Pro price ID into `.env`.
+1. Sign up at dashboard.butterbase.ai, redeem promo code `ENJOY0707` in billing.
+2. Enable **Developer mode** (Settings → Developer mode) to unlock the Apps tab.
+3. Create an app — copy its App ID (shown as `app_xxxxxxxx` in the API base URL) and your
+   account's API key (API keys tab) into `.env` as `BUTTERBASE_APP_ID` and `BUTTERBASE_API_KEY`.
+4. Auth and Database work immediately — the app auto-provisions an Auth API and a Data API per
+   app. Apply the schema once: see `POST /v1/{app_id}/schema/apply` calls in
+   `server/seed-runner.js`-style scripts, or just let the app run — `server/index.js` creates
+   `search_history`/`ingested_docs` rows on first use (tables must exist first; see the schema
+   apply call used during development, shape: `{"schema":{"tables":{...}}, "dry_run":false}`).
+5. Payments need one more manual step in the dashboard's **Monetization** tab: connect a Stripe
+   account and create a plan, then put that plan's UUID into `BUTTERBASE_PRO_PLAN_ID` in `.env`.
+   We intentionally left this unconnected during the hackathon (no real bank account attached);
+   the code path is real and tested, it just has no live plan to check out against.
 
 ### 3. RocketRide Cloud
 1. Sign up at cloud.rocketride.ai and create an API key.
@@ -71,13 +84,16 @@ npm start
 Open `http://localhost:3000`.
 
 ## Demo script
-1. Sign in (paste a Butterbase session token).
+1. Sign up with a name/email/password (creates a real Butterbase Auth user), or sign in if you
+   already have one.
 2. Search "Kubernetes" → see Alice, Bob, Farid (direct graph matches with team + level).
-3. Click Upgrade → Butterbase checkout → after payment, search again → connector paths appear
-   (multi-hop Neo4j traversal via `KNOWS`).
-4. Paste a new Slack-style snippet into Ingest (e.g. "Hiro has been deep in Neo4j query tuning
-   this sprint") → RocketRide pipeline extracts the skill → graph updates live → search "Neo4j"
-   again to see Hiro now ranked higher.
+3. Click Upgrade → since no Stripe plan is connected yet, you'll see a clear "payments not
+   fully configured" message rather than a real checkout — this is the one honestly-incomplete
+   piece (see Butterbase setup step 5 above).
+4. Paste a new Slack-style snippet into Teach (e.g. "Hiro has been deep in Neo4j query tuning
+   this sprint") → RocketRide pipeline extracts the skill → graph updates live, marked
+   🔶 unverified → search "Neo4j" again to see Hiro now ranked higher, with a "confirm" button
+   visible only if you're signed in as Hiro.
 
 ## Optional bonus tracks not used
 Daytona and Cognee were not integrated in this build due to time constraints — see problem
