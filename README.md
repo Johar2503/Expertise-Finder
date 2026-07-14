@@ -1,5 +1,7 @@
 # Expertise Finder — HackwithBay 3.0 (Track 4)
 
+🔗 **Live app: https://expertise-finder-production.up.railway.app**
+
 **Problem:** "Who actually knows about X?" gets lost across large orgs — knowledge sits in
 people's heads and scattered docs/Slack messages, with no queryable map of who knows what.
 
